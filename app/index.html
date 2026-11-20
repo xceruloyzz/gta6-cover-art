@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Boulevard — GTA-style Cover Maker</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">NB</span> Neon Boulevard</div>
+  <p class="offline-note">100% offline — your photos never leave this machine.</p>
+</header>
+<main class="studio">
+  <section class="controls" aria-label="Cover controls">
+    <div class="group">
+      <h2>1 · Photos</h2>
+      <p class="hint">Add up to four of your own photos, or try a sample.</p>
+      <div class="slots" id="photoSlots"></div>
+      <div class="sample-row">
+        <button type="button" class="chip" data-sample="boulevard">Sample: Boulevard</button>
+        <button type="button" class="chip" data-sample="pier">Sample: Pier</button>
+      </div>
+      <input id="filePicker" type="file" accept="image/*" hidden>
+    </div>
+
+    <div class="group">
+      <h2>2 · Layout</h2>
+      <div class="layout-row" id="layoutRow"></div>
+    </div>
+
+    <div class="group">
+      <h2>3 · Colour grade</h2>
+      <div class="grade-row" id="gradeRow"></div>
+    </div>
+
+    <div class="group">
+      <h2>4 · Caption</h2>
+      <label>Title
+        <input id="titleInput" type="text" maxlength="28" value="Sunset Heist" autocomplete="off">
+      </label>
+      <label>Subtitle
+        <input id="subtitleInput" type="text" maxlength="42" value="Neon Bay nights" autocomplete="off">
+      </label>
+      <label>Tagline
+        <input id="taglineInput" type="text" maxlength="24" value="Est. 2026" autocomplete="off">
+      </label>
+      <div class="style-row" id="titleStyleRow"></div>
+      <label class="check"><input id="frameToggle" type="checkbox" checked> White poster border</label>
+    </div>
+
+    <div class="group" id="panelGroup">
+      <h2>Selected panel</h2>
+      <p class="hint" id="panelHint">Click a panel in the preview to pick it, then drag its photo to move it.</p>
+      <label>Photo in this panel
+        <select id="panelPhoto"></select>
+      </label>
+      <label>Zoom <span id="zoomValue">100%</span>
+        <input id="panelZoom" type="range" min="1" max="3" step="0.01" value="1">
+      </label>
+      <button type="button" class="chip" id="panelReset">Centre the photo</button>
+    </div>
+
+    <div class="group">
+      <h2>5 · Size &amp; export</h2>
+      <div class="size-row" id="sizeRow"></div>
+      <button type="button" class="export" id="exportBtn">Export PNG</button>
+      <button type="button" class="export secondary" id="exportAllBtn">Export all three sizes</button>
+      <p id="status" role="status"></p>
+    </div>
+  </section>
+
+  <section class="stage" aria-label="Cover preview">
+    <canvas id="preview"></canvas>
+    <p class="stage-hint">Click a panel to select it · drag to move its photo · scroll to zoom</p>
+  </section>
+</main>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
