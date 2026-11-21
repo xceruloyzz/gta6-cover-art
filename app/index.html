@@ -48,6 +48,10 @@
       </label>
       <div class="style-row" id="titleStyleRow"></div>
       <label class="check"><input id="frameToggle" type="checkbox" checked> White poster border</label>
+      <label class="check"><input id="posterInkToggle" type="checkbox" checked> Poster ink</label>
+      <label>Heat <span id="heatValue">5</span>
+        <input id="heatRange" type="range" min="0" max="5" step="1" value="5">
+      </label>
     </div>
 
     <div class="group" id="panelGroup">
@@ -66,7 +70,7 @@
       <h2>5 · Size &amp; export</h2>
       <div class="size-row" id="sizeRow"></div>
       <button type="button" class="export" id="exportBtn">Export PNG</button>
-      <button type="button" class="export secondary" id="exportAllBtn">Export all three sizes</button>
+      <button type="button" class="export secondary" id="exportAllBtn">Export all sizes</button>
       <p id="status" role="status"></p>
     </div>
   </section>

@@ -26,10 +26,15 @@ Then open <http://localhost:8080> in desktop Chrome.
   Mosaic Nine, the classic multi-panel poster look.
 - **Five colour grades** — Vice Sunset, Neon Night, Miami Heat, Palm Noir and Golden
   Hour, each with film grain and a vignette.
-- **Caption lettering** — a bold condensed title (in three styles: sunset gradient,
-  white block, neon glow), a script subtitle and a tracked-out tagline, all editable.
-- **Fast export** — one click exports a PNG in 1080×1080, 1080×1350 or 1920×1080,
-  or all three at once.
+- **Poster-ink treatment** — every graded photo is posterised into flat ink levels
+  with darkened edge lines, so panels read as printed poster art, not photographs
+  (it can be switched off in the caption controls).
+- **Caption lettering** — a dedicated title block with a halftone strip, a huge
+  gradient title (in three styles: sunset gradient, white block, neon glow), a
+  script subtitle, a row of heat stars, a diagonal COVER STAR badge ribbon and a
+  tracked-out tagline, all editable.
+- **Fast export** — one click exports a PNG in 1080×1080, 1080×1350, 1920×1080 or
+  the 1080×1920 story size, or all sizes at once.
 
 ## How it is built
 

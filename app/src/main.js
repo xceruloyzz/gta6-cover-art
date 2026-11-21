@@ -20,6 +20,8 @@ const state = {
   tagline: 'Est. 2026',
   titleStyle: 'sunset',
   frame: true,
+  posterInk: true,
+  heat: 5,
   photos: [],
   panels: Array.from({ length: 9 }, () => blankPanel()),
   selected: 0,
@@ -213,6 +215,14 @@ document.getElementById('titleInput').addEventListener('input', (e) => { state.t
 document.getElementById('subtitleInput').addEventListener('input', (e) => { state.subtitle = e.target.value; redraw(); });
 document.getElementById('taglineInput').addEventListener('input', (e) => { state.tagline = e.target.value; redraw(); });
 document.getElementById('frameToggle').addEventListener('change', (e) => { state.frame = e.target.checked; redraw(); });
+document.getElementById('posterInkToggle').addEventListener('change', (e) => { state.posterInk = e.target.checked; redraw(); });
+const heatRange = document.getElementById('heatRange');
+const heatValue = document.getElementById('heatValue');
+heatRange.addEventListener('input', () => {
+  state.heat = Number(heatRange.value);
+  heatValue.textContent = heatRange.value;
+  redraw();
+});
 
 const sizeRow = document.getElementById('sizeRow');
 for (const [id, size] of Object.entries(SIZES)) {
@@ -371,7 +381,7 @@ document.getElementById('exportAllBtn').addEventListener('click', async () => {
     // eslint-disable-next-line no-await-in-loop
     await exportSize(sizeId);
   }
-  setStatus('Saved all three sizes.');
+  setStatus('Saved all sizes.');
 });
 
 /* ---------- start ---------- */

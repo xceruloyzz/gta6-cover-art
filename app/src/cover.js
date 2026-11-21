@@ -9,7 +9,11 @@ export const SIZES = {
   '1080x1080': { w: 1080, h: 1080, label: 'Square 1080 x 1080' },
   '1080x1350': { w: 1080, h: 1350, label: 'Portrait 1080 x 1350' },
   '1920x1080': { w: 1920, h: 1080, label: 'Landscape 1920 x 1080' },
+  '1080x1920': { w: 1080, h: 1920, label: 'Story 1080 x 1920' },
 };
+
+/** Fraction of the inner cover height reserved for the title band at the bottom. */
+export const TITLE_BAND_RATIO = 0.3;
 
 export const LAYOUTS = {
   'hero-trio': { name: 'Hero Trio', panels: 4, blurb: 'One big hero photo, three stacked beside it' },
@@ -142,8 +146,58 @@ function getGrainTile() {
   return tile;
 }
 
+/**
+ * Poster-ink treatment: pushes contrast and saturation, bands every channel into
+ * five flat poster levels, then darkens strong luminance edges so the photo reads
+ * as inked poster art rather than a plain photograph. Runs in place on the
+ * offscreen canvas context of an already graded photo.
+ */
+function applyPosterInk(octx, pw, ph) {
+  const img = octx.getImageData(0, 0, pw, ph);
+  const data = img.data;
+  const count = pw * ph;
+  const luminance = new Float32Array(count);
+  const levels = 5;
+  const step = 255 / (levels - 1);
+  for (let p = 0; p < count; p += 1) {
+    const i = p * 4;
+    let r = (data[i] - 128) * 1.12 + 128;
+    let g = (data[i + 1] - 128) * 1.12 + 128;
+    let b = (data[i + 2] - 128) * 1.12 + 128;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = lum + (r - lum) * 1.35;
+    g = lum + (g - lum) * 1.35;
+    b = lum + (b - lum) * 1.35;
+    r = Math.max(0, Math.min(255, Math.round(r / step) * step));
+    g = Math.max(0, Math.min(255, Math.round(g / step) * step));
+    b = Math.max(0, Math.min(255, Math.round(b / step) * step));
+    data[i] = r;
+    data[i + 1] = g;
+    data[i + 2] = b;
+    luminance[p] = 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+  // Ink lines: a pixel whose luminance jumps sharply against its right or bottom
+  // neighbour is pulled down hard, tracing a dark outline along the edge.
+  for (let y = 0; y < ph; y += 1) {
+    for (let x = 0; x < pw; x += 1) {
+      const p = y * pw + x;
+      let jump = 0;
+      if (x + 1 < pw) jump = Math.max(jump, Math.abs(luminance[p] - luminance[p + 1]));
+      if (y + 1 < ph) jump = Math.max(jump, Math.abs(luminance[p] - luminance[p + pw]));
+      if (jump > 42) {
+        const factor = jump > 95 ? 0.3 : 0.48;
+        const i = p * 4;
+        data[i] *= factor;
+        data[i + 1] *= factor;
+        data[i + 2] *= factor;
+      }
+    }
+  }
+  octx.putImageData(img, 0, 0);
+}
+
 /** Draws one photo into a panel-sized offscreen canvas, graded, and returns it. */
-function gradedPhoto(photo, panel, grade) {
+function gradedPhoto(photo, panel, grade, posterInk = true) {
   const pw = Math.max(2, Math.round(panel.w));
   const ph = Math.max(2, Math.round(panel.h));
   const off = document.createElement('canvas');
@@ -173,6 +227,7 @@ function gradedPhoto(photo, panel, grade) {
   octx.fillRect(0, 0, pw, ph);
   octx.globalCompositeOperation = 'source-over';
   octx.globalAlpha = 1;
+  if (posterInk) applyPosterInk(octx, pw, ph);
   return off;
 }
 
@@ -224,71 +279,166 @@ function wrapTitle(ctx, text, maxWidth) {
   return lines;
 }
 
-/** Draws the title block: script subtitle, bold condensed title, tagline, badge. */
+/** Draws one five-pointed star centred on (cx, cy); filled gold or outline only. */
+function drawStar(ctx, cx, cy, radius, filled) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i += 1) {
+    const r = i % 2 === 0 ? radius : radius * 0.46;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const px = cx + Math.cos(a) * r;
+    const py = cy + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  if (filled) {
+    ctx.fillStyle = '#ffd23e';
+    ctx.fill();
+  }
+  ctx.lineWidth = Math.max(1.2, radius * 0.14);
+  ctx.strokeStyle = '#ffd23e';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+/** Draws the diagonal COVER STAR ribbon clipped inside the cover's inner area. */
+function drawRibbon(ctx, w, h, inner) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(inner.x, inner.y, inner.w, inner.h);
+  ctx.clip();
+  const fontSize = Math.max(11, h * 0.021);
+  ctx.font = `900 ${fontSize}px "Cover Display", "Arial Narrow", sans-serif`;
+  const text = 'COVER STAR';
+  const barW = ctx.measureText(text).width + fontSize * 2.4;
+  const barH = fontSize * 1.85;
+  const cx = inner.x + w * 0.088;
+  const cy = inner.y + h * 0.04;
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.5);
+  const grad = ctx.createLinearGradient(-barW / 2, 0, barW / 2, 0);
+  grad.addColorStop(0, '#ff2d78');
+  grad.addColorStop(1, '#ff7e2a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(-barW / 2, -barH / 2, barW, barH);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, fontSize * 0.05);
+  ctx.restore();
+}
+
+/**
+ * Draws the title band and everything on it. The band fills the bottom
+ * TITLE_BAND_RATIO of the inner cover; the panels are laid out above it, so the
+ * band never covers a panel. On the band: a halftone strip and gradient rule
+ * along the top edge, then one centred stack of script subtitle, huge gradient
+ * title and heat stars. The tagline sits bottom-left, the NEON BAY badge
+ * top-right over the panels, and the COVER STAR ribbon crosses the top-left.
+ */
 function drawTitleBlock(ctx, w, h, state, frameInset) {
-  const left = frameInset + w * 0.045;
-  const right = w - frameInset - w * 0.045;
-  const maxTextW = right - left;
+  const inner = { x: frameInset, y: frameInset, w: w - 2 * frameInset, h: h - 2 * frameInset };
+  const bandH = inner.h * TITLE_BAND_RATIO;
+  const bandY = inner.y + inner.h - bandH;
   const title = (state.title || '').trim().toUpperCase();
   const subtitle = (state.subtitle || '').trim();
   const tagline = (state.tagline || '').trim().toUpperCase();
+  const heat = Math.max(0, Math.min(5, Math.round(state.heat ?? 5)));
+  const centreX = w / 2;
 
-  const scrim = ctx.createLinearGradient(0, h * 0.58, 0, h - frameInset);
-  scrim.addColorStop(0, 'rgba(12, 4, 22, 0)');
-  scrim.addColorStop(0.55, 'rgba(12, 4, 22, 0.55)');
-  scrim.addColorStop(1, 'rgba(12, 4, 22, 0.85)');
-  ctx.fillStyle = scrim;
-  ctx.fillRect(frameInset, h * 0.58, w - 2 * frameInset, h - frameInset - h * 0.58);
+  // Solid dark purple-black band with a soft vertical falloff.
+  const bandGrad = ctx.createLinearGradient(0, bandY, 0, bandY + bandH);
+  bandGrad.addColorStop(0, '#22102f');
+  bandGrad.addColorStop(0.35, '#170a24');
+  bandGrad.addColorStop(1, '#0c0516');
+  ctx.fillStyle = bandGrad;
+  ctx.fillRect(inner.x, bandY, inner.w, bandH);
 
-  // Accent rule drawn above the title block: orange to pink.
-  const rule = ctx.createLinearGradient(left, 0, left + w * 0.18, 0);
-  rule.addColorStop(0, '#ffb347');
-  rule.addColorStop(0.5, '#ff7e2a');
-  rule.addColorStop(1, '#ff2d78');
+  // Thin orange-to-pink rule right on the band's top edge.
+  const ruleGrad = ctx.createLinearGradient(inner.x, 0, inner.x + inner.w, 0);
+  ruleGrad.addColorStop(0, '#ffb347');
+  ruleGrad.addColorStop(0.5, '#ff7e2a');
+  ruleGrad.addColorStop(1, '#ff2d78');
+  ctx.fillStyle = ruleGrad;
+  ctx.fillRect(inner.x, bandY, inner.w, Math.max(2.5, bandH * 0.018));
 
-  // Title: shrink until it fits on at most two lines. The last line's baseline sits
-  // just above the tagline; earlier lines stack above it, subtitle above those.
-  const lastBaseline = h - frameInset - h * 0.055;
-  let size = Math.max(24, h * 0.115);
+  // Halftone strip under the rule: rows of orange dots shrinking as they fall.
+  const stripH = bandH * 0.16;
+  const stripTop = bandY + Math.max(2.5, bandH * 0.018);
+  const rows = 4;
+  const spacingX = Math.max(13, inner.w * 0.017);
+  const spacingY = stripH / rows;
+  ctx.fillStyle = '#ff7e2a';
+  for (let row = 0; row < rows; row += 1) {
+    const fade = 1 - row / rows;
+    const radius = Math.max(0.7, spacingY * 0.3 * (0.35 + 0.65 * fade));
+    ctx.globalAlpha = 0.25 + 0.65 * fade;
+    const dotY = stripTop + spacingY * (row + 0.5);
+    for (let dotX = inner.x + spacingX * 0.5; dotX < inner.x + inner.w; dotX += spacingX) {
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Size the centred stack: shrink the title from a huge start until every line
+  // fits the text width and subtitle + title + stars fit below the halftone.
+  const contentTop = bandY + stripH + bandH * 0.02;
+  const contentH = bandY + bandH - contentTop;
+  const maxTextW = inner.w * 0.92;
+  const starRadius = contentH * 0.06;
+  let size = Math.max(24, h * 0.19);
   let lines = [];
+  let subSize = 0;
+  let stackH = 0;
+  const lineHeightFor = (s) => s * 0.92;
   if (title) {
     while (size > 20) {
       ctx.font = `900 ${size}px "Cover Display", "Arial Narrow", sans-serif`;
       try { ctx.letterSpacing = '0.01em'; } catch { /* older canvas: no letter spacing */ }
       lines = wrapTitle(ctx, title, maxTextW);
+      subSize = subtitle ? Math.max(15, size * 0.31) : 0;
+      const gapAfterSub = subtitle ? size * 0.1 : 0;
+      const gapBeforeStars = size * 0.12;
+      stackH = (subtitle ? subSize * 1.05 + gapAfterSub : 0)
+        + lines.length * lineHeightFor(size) + gapBeforeStars + starRadius * 2;
       const tooWide = lines.some((line) => ctx.measureText(line).width > maxTextW);
-      if (!tooWide && lines.length <= 2) break;
+      if (!tooWide && lines.length <= 2 && stackH <= contentH) break;
       size -= 2;
     }
+  } else if (subtitle) {
+    size = Math.max(24, h * 0.08);
+    subSize = Math.max(15, size * 0.31);
+    stackH = subSize * 1.05 + size * 0.12 + starRadius * 2;
   }
-  const lineHeight = size * 0.98;
-  const firstBaseline = lastBaseline - (lines.length - 1) * lineHeight;
+  const lineHeight = lineHeightFor(size);
+  let cursorY = contentTop + Math.max(0, (contentH - stackH) / 2);
+
+  // (a) Script subtitle, pink with a soft glow, centred.
   if (subtitle) {
-    const subSize = Math.max(18, h * 0.032);
     ctx.font = `900 ${subSize}px "Cover Script", Georgia, serif`;
-    ctx.textAlign = 'left';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.shadowColor = 'rgba(255, 45, 120, 0.8)';
+    ctx.shadowColor = 'rgba(255, 45, 120, 0.85)';
     ctx.shadowBlur = subSize * 0.35;
     ctx.fillStyle = '#ff8fd0';
-    const subBaseline = lines.length
-      ? firstBaseline - lineHeight - subSize * 0.25
-      : lastBaseline - subSize * 0.25;
-    ctx.fillText(subtitle, left, subBaseline);
+    ctx.fillText(subtitle, centreX, cursorY + subSize * 0.85);
     ctx.shadowBlur = 0;
-    ctx.fillStyle = rule;
-    ctx.fillRect(left, subBaseline - subSize * 1.4 - h * 0.02, w * 0.18, Math.max(3, h * 0.004));
-  } else if (lines.length) {
-    ctx.fillStyle = rule;
-    ctx.fillRect(left, firstBaseline - lineHeight - h * 0.018, w * 0.18, Math.max(3, h * 0.004));
+    cursorY += subSize * 1.05 + size * 0.1;
   }
+
+  // (b) The title itself. The font is set explicitly here: the subtitle draw
+  // above leaves the script font current, and the title must not inherit it.
   if (lines.length) {
-    ctx.textAlign = 'left';
+    ctx.font = `900 ${size}px "Cover Display", "Arial Narrow", sans-serif`;
+    try { ctx.letterSpacing = '0.01em'; } catch { /* older canvas: no letter spacing */ }
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.lineJoin = 'round';
     ctx.miterLimit = 2;
     lines.forEach((line, i) => {
-      const y = firstBaseline + i * lineHeight;
+      const y = cursorY + size * 0.82 + i * lineHeight;
       const fill = ctx.createLinearGradient(0, y - size, 0, y + size * 0.2);
       if (state.titleStyle === 'white') {
         fill.addColorStop(0, '#ffffff');
@@ -301,36 +451,53 @@ function drawTitleBlock(ctx, w, h, state, frameInset) {
         fill.addColorStop(0.5, '#ff7e2a');
         fill.addColorStop(1, '#ff2d78');
       }
-      ctx.lineWidth = Math.max(2, size * 0.045);
-      ctx.strokeStyle = 'rgba(18, 4, 26, 0.9)';
-      ctx.strokeText(line, left, y);
+      // Hard offset shadow: a solid near-black copy down-right, no blur.
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#0a0312';
+      ctx.fillText(line, centreX + size * 0.055, y + size * 0.055);
+      ctx.lineWidth = Math.max(2, size * 0.07);
+      ctx.strokeStyle = 'rgba(18, 4, 26, 0.95)';
+      ctx.strokeText(line, centreX, y);
       if (state.titleStyle === 'neon') {
         ctx.shadowColor = '#ff2d92';
         ctx.shadowBlur = size * 0.28;
         ctx.fillStyle = fill;
-        ctx.fillText(line, left, y);
+        ctx.fillText(line, centreX, y);
         ctx.shadowColor = '#00e5c7';
         ctx.shadowBlur = size * 0.12;
-        ctx.fillText(line, left, y);
+        ctx.fillText(line, centreX, y);
         ctx.shadowBlur = 0;
       } else {
         ctx.fillStyle = fill;
-        ctx.fillText(line, left, y);
+        ctx.fillText(line, centreX, y);
       }
     });
     try { ctx.letterSpacing = '0px'; } catch { /* ignore */ }
+    cursorY += lines.length * lineHeight + size * 0.12;
+  } else {
+    cursorY += size * 0.12;
   }
 
-  // Tagline, tracked out, bottom-left; badge pill, top-right.
+  // (c) Heat stars: gold-filled up to the heat rating, outline-only after.
+  const starSpacing = starRadius * 2.55;
+  const starsW = starSpacing * 4;
+  for (let i = 0; i < 5; i += 1) {
+    drawStar(ctx, centreX - starsW / 2 + i * starSpacing, cursorY + starRadius, starRadius, i < heat);
+  }
+
+  // Tagline, tracked out, bottom-left inside the band.
   if (tagline) {
     const tagSize = Math.max(11, h * 0.018);
     ctx.font = `700 ${tagSize}px "Cover Display", "Arial Narrow", sans-serif`;
     try { ctx.letterSpacing = '0.42em'; } catch { /* ignore */ }
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillText(tagline, left, h - frameInset - h * 0.022);
+    ctx.fillText(tagline, inner.x + inner.w * 0.028, bandY + bandH - bandH * 0.07);
     try { ctx.letterSpacing = '0px'; } catch { /* ignore */ }
   }
+
+  // NEON BAY badge pill, top-right over the panels.
   const badgeText = 'NEON BAY';
   const badgeSize = Math.max(12, h * 0.02);
   ctx.font = `900 ${badgeSize}px "Cover Display", "Arial Narrow", sans-serif`;
@@ -354,6 +521,8 @@ function drawTitleBlock(ctx, w, h, state, frameInset) {
   ctx.textBaseline = 'middle';
   ctx.fillText(badgeText, badgeW / 2, badgeH / 2 + badgeSize * 0.06);
   ctx.restore();
+
+  drawRibbon(ctx, w, h, inner);
 }
 
 /**
@@ -377,7 +546,10 @@ export function drawCover(canvas, state, options = {}) {
   ctx.fillRect(0, 0, w, h);
 
   const inner = { x: inset, y: inset, w: w - 2 * inset, h: h - 2 * inset };
-  const panels = layoutPanels(state.layout, inner.w, inner.h);
+  // Panels live in the top of the inner area; the bottom TITLE_BAND_RATIO is
+  // reserved for the title band, so no panel is ever hidden behind it.
+  const panelAreaH = Math.round(inner.h * (1 - TITLE_BAND_RATIO));
+  const panels = layoutPanels(state.layout, inner.w, panelAreaH);
   const gutterColor = frame ? '#fdfbf7' : '#14101c';
 
   if (state.layout === 'tilted') {
@@ -425,7 +597,7 @@ export function drawCover(canvas, state, options = {}) {
     ctx.clip();
     const photo = placement.photo >= 0 ? state.photos[placement.photo]?.img ?? null : null;
     if (photo) {
-      const graded = gradedPhoto(photo, { w: rect.w, h: rect.h, ...placement }, grade);
+      const graded = gradedPhoto(photo, { w: rect.w, h: rect.h, ...placement }, grade, state.posterInk !== false);
       ctx.drawImage(graded, 0, 0, rect.w, rect.h);
     } else {
       drawEmptyPanel(ctx, { x: 0, y: 0, w: rect.w, h: rect.h }, grade);
